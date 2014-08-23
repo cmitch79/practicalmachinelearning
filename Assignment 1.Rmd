@@ -1,0 +1,86 @@
+---
+title: "Human Activity Recognition"
+output: html_document
+---
+<br>
+
+##Executive Summary##
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively.  These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. This study uses data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways.
+
+The goal of this study is to predit the manner in which participants exercised by interpretating data captured by the Human Activity Recognition **HAR** devices.  The outcome variable "classe" has five different categories that represent how well activities were performed.  The objective is to develop a predictive model that most accurately predicts classe based on 20 test cases.
+
+More information is available from the website here: <http://groupware.les.inf.puc-rio.br/har> (see the section on the Weight Lifting Exercise Dataset).
+
+##Data Cleansing##
+
+The training and test data and the required libraries are first loaded into R.
+```{r}
+library(caret)
+library(randomForest)
+```
+
+```{r, cache=TRUE}
+training <- read.csv("./data/pml-training.csv")
+testing <- read.csv("./data/pml-testing.csv")
+```
+A preliminary inspection of the data revealed columns with many NA or empty cells.  The columns with NA values are removed.
+```{r}
+naCol <- apply(training,2,function(x) {sum(is.na(x))})
+trainClean1 <- training[,which(naCol == 0)]
+testClean1 <- testing[,which(naCol==0)]
+```
+Next, the nearZeroVar function is used to diagnose predictors that have one unique value or predictors that have very few unique values relative to the number of samples in the data set and where the ratio of the frequency of the second most common value is large.  The variables don't help to train the prediction algorithm so they are extracted from the training and test data.  "classe" is excluded from the nearZeroVar review.
+```{r}
+nz <- nearZeroVar(trainClean1[,-160])
+trainClean2 <- trainClean1[,-nz]
+testClean2 <- testClean1[,-nz]
+```
+Finally, the first six columns aren't sensor readings and are therefore irrelevant to the prediction so they are removed.  These columns include timestamps, username and other irrelevant data.
+```{r}
+trainClean3 <- trainClean2[,7:ncol(trainClean2)]
+testClean3 <- testClean2[,7:ncol(testClean2)]
+```
+
+##Data Partitioning and Cross Validation##
+
+The cleansed training data set is now partitioned (70% / 30%) into training and testing sets for model fitting.
+```{r}
+set.seed(32323)
+inTrain <- createDataPartition(y=trainClean3$classe,p=0.70,list=FALSE)
+train <- trainClean3[inTrain,]
+test <- trainClean3[-inTrain,]
+```
+
+## Fitting the Predictive Model ##
+
+The Random Forest method with 4-fold cross validation is used.  The out of bag error estimate is shown to be .72%.
+```{r}
+set.seed(32323)
+trainControl = trainControl(method = "cv", number = 4)
+modFit <- train(train$classe ~., data=train, method = "rf",trControl = trainControl)
+modFit$finalModel
+```
+
+## Predicting Results and Displaying a Confusion Matrix ##
+
+The confusion matrix shows an overall accuracy of 99.4% which is very good. 
+```{r}
+predictions <- predict(modFit,test)
+confusionMatrix(predictions,test$classe)
+```
+
+## Apply the Model to a Set of 20 Test Cases ##
+Classe is now predicted from the testing data and the outcome for 20 tests is output to 20 text file that will be submitted for grading.
+```{r}
+answers <- predict(modFit, testClean3)
+
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+pml_write_files(answers)
